@@ -1,0 +1,14 @@
+[package]
+name = "eocker-registry"
+version = "0.1.0"
+authors = ["hasheddan <georgedanielmangum@gmail.com>"]
+description = "An OCI image registry for the curious."
+repository = "https://github.com/eocker/eocker"
+edition = "2018"
+readme = "README.md"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+warp = "0.3"
+eocker = { path = "../eocker" }
+urlencoding = "2.0.0"
