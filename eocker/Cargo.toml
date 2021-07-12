@@ -1,0 +1,10 @@
+[package]
+name = "eocker"
+version = "0.1.0"
+authors = ["hasheddan <georgedanielmangum@gmail.com>"]
+description = "A library for OCI images."
+repository = "https://github.com/eocker/eocker"
+edition = "2018"
+readme = "README.md"
+
+[dependencies]
