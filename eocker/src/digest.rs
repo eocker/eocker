@@ -1,4 +1,4 @@
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{de::Error, Deserialize, Deserializer, Serialize, Serializer};
 
 #[derive(Debug)]
 pub struct Hash {
@@ -12,11 +12,15 @@ impl<'de> Deserialize<'de> for Hash {
         D: Deserializer<'de>,
     {
         let s: String = String::deserialize(deserializer)?;
-        let mut sp = s.split(":");
-        // TODO(hasheddan): perform more robust checks
+        let sp = s
+            .split_once(":")
+            .ok_or_else(|| Error::custom("could not split digest"))?;
+        let algorithm = sp.0.to_string();
+        let hex = sp.1.to_string();
+        // ... checks for validity of digest segments ...
         Ok(Hash {
-            algorithm: sp.next().unwrap().to_string(),
-            hex: sp.next().unwrap().to_string(),
+            algorithm: algorithm,
+            hex: hex,
         })
     }
 }
@@ -29,4 +33,3 @@ impl Serialize for Hash {
         serializer.serialize_str(format!("{}:{}", self.algorithm, self.hex).as_str())
     }
 }
-
