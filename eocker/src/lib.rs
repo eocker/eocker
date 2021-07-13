@@ -8,110 +8,110 @@ pub mod types;
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Manifest {
-    schema_version: i64,
-    media_type: Option<MediaType>,
-    config: Descriptor,
-    layers: Vec<Descriptor>,
-    annotations: Option<HashMap<String, String>>,
+    pub schema_version: i64,
+    pub media_type: Option<MediaType>,
+    pub config: Descriptor,
+    pub layers: Vec<Descriptor>,
+    pub annotations: Option<HashMap<String, String>>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct IndexManifest {
-    schema_version: i64,
-    media_type: Option<MediaType>,
-    manifests: Vec<Descriptor>,
-    annotations: Option<HashMap<String, String>>,
+    pub schema_version: i64,
+    pub media_type: Option<MediaType>,
+    pub manifests: Vec<Descriptor>,
+    pub annotations: Option<HashMap<String, String>>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Descriptor {
-    media_type: MediaType,
-    size: i64,
-    digest: digest::Hash,
-    urls: Option<Vec<String>>,
-    annotations: Option<HashMap<String, String>>,
-    platform: Option<Platform>,
+    pub media_type: MediaType,
+    pub size: i64,
+    pub digest: digest::Hash,
+    pub urls: Option<Vec<String>>,
+    pub annotations: Option<HashMap<String, String>>,
+    pub platform: Option<Platform>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Platform {
-    architecture: String,
-    os: String,
+    pub architecture: String,
+    pub os: String,
     #[serde(rename = "os.version")]
-    os_version: Option<String>,
+    pub os_version: Option<String>,
     #[serde(rename = "os.features")]
-    os_features: Option<Vec<String>>,
-    variant: Option<String>,
-    features: Option<Vec<String>>,
+    pub os_features: Option<Vec<String>>,
+    pub variant: Option<String>,
+    pub features: Option<Vec<String>>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ConfigFile {
-    architecture: String,
-    author: Option<String>,
-    container: Option<String>,
-    created: Option<chrono::DateTime<chrono::Utc>>,
-    docker_version: Option<String>,
-    history: Option<Vec<History>>,
-    os: String,
-    rootfs: RootFS,
-    config: Config,
+    pub architecture: String,
+    pub author: Option<String>,
+    pub container: Option<String>,
+    pub created: Option<chrono::DateTime<chrono::Utc>>,
+    pub docker_version: Option<String>,
+    pub history: Option<Vec<History>>,
+    pub os: String,
+    pub rootfs: RootFS,
+    pub config: Config,
     #[serde(rename = "os.version")]
-    os_version: Option<String>,
+    pub os_version: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct History {
-    author: Option<String>,
-    created: Option<chrono::DateTime<chrono::Utc>>,
-    created_by: Option<String>,
-    comment: Option<String>,
-    empty_layer: Option<bool>,
+    pub author: Option<String>,
+    pub created: Option<chrono::DateTime<chrono::Utc>>,
+    pub created_by: Option<String>,
+    pub comment: Option<String>,
+    pub empty_layer: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct RootFS {
     #[serde(rename = "type")]
-    root_fs_type: String,
-    diff_ids: Vec<digest::Hash>,
+    pub root_fs_type: String,
+    pub diff_ids: Vec<digest::Hash>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct HealthConfig {
-    test: Option<Vec<String>>,
-    interval: Option<time::Duration>,
-    timeout: Option<time::Duration>,
-    start_period: Option<time::Duration>,
-    retries: Option<i32>,
+    pub test: Option<Vec<String>>,
+    pub interval: Option<time::Duration>,
+    pub timeout: Option<time::Duration>,
+    pub start_period: Option<time::Duration>,
+    pub retries: Option<i32>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct Config {
-    attach_stderr: Option<bool>,
-    attach_stdin: Option<bool>,
-    attach_stdout: Option<bool>,
-    cmd: Option<Vec<String>>,
-    healthcheck: Option<HealthConfig>,
-    domainnname: Option<String>,
-    entrypoint: Option<Vec<String>>,
-    env: Option<Vec<String>>,
-    hostname: Option<String>,
-    image: Option<String>,
-    labels: Option<HashMap<String, String>>,
-    on_build: Option<Vec<String>>,
-    open_stdin: Option<bool>,
-    stdin_once: Option<bool>,
-    tty: Option<bool>,
-    user: Option<String>,
-    volumes: Option<HashMap<String, serde_json::value::Value>>,
-    working_dir: Option<String>,
-    exposed_ports: Option<HashMap<String, serde_json::value::Value>>,
-    args_escaped: Option<bool>,
-    network_disabled: Option<bool>,
-    mac_address: Option<String>,
-    stop_signal: Option<String>,
-    shell: Option<Vec<String>>,
+    pub attach_stderr: Option<bool>,
+    pub attach_stdin: Option<bool>,
+    pub attach_stdout: Option<bool>,
+    pub cmd: Option<Vec<String>>,
+    pub healthcheck: Option<HealthConfig>,
+    pub domainnname: Option<String>,
+    pub entrypoint: Option<Vec<String>>,
+    pub env: Option<Vec<String>>,
+    pub hostname: Option<String>,
+    pub image: Option<String>,
+    pub labels: Option<HashMap<String, String>>,
+    pub on_build: Option<Vec<String>>,
+    pub open_stdin: Option<bool>,
+    pub stdin_once: Option<bool>,
+    pub tty: Option<bool>,
+    pub user: Option<String>,
+    pub volumes: Option<HashMap<String, serde_json::value::Value>>,
+    pub working_dir: Option<String>,
+    pub exposed_ports: Option<HashMap<String, serde_json::value::Value>>,
+    pub args_escaped: Option<bool>,
+    pub network_disabled: Option<bool>,
+    pub mac_address: Option<String>,
+    pub stop_signal: Option<String>,
+    pub shell: Option<Vec<String>>,
 }
