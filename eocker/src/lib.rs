@@ -78,7 +78,6 @@ pub struct RootFS {
     diff_ids: Vec<digest::Hash>,
 }
 
-
 #[derive(Serialize, Deserialize, Debug)]
 pub struct HealthConfig {
     test: Option<Vec<String>>,
@@ -107,12 +106,12 @@ pub struct Config {
     stdin_once: Option<bool>,
     tty: Option<bool>,
     user: Option<String>,
-    volumes: Option<HashMap<String,serde_json::value::Value>>,
+    volumes: Option<HashMap<String, serde_json::value::Value>>,
     working_dir: Option<String>,
-    exposed_ports: Option<HashMap<String,serde_json::value::Value>>,
+    exposed_ports: Option<HashMap<String, serde_json::value::Value>>,
     args_escaped: Option<bool>,
     network_disabled: Option<bool>,
     mac_address: Option<String>,
     stop_signal: Option<String>,
-    shell: Option<Vec<String>>
+    shell: Option<Vec<String>>,
 }
