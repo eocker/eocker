@@ -10,7 +10,7 @@ pub mod types;
 #[derive(Debug)]
 pub struct Layer {
     pub content: Vec<u8>,
-    pub diff_id: String,
+    pub diff_id: digest::Hash,
     pub descriptor: Descriptor,
 }
 
@@ -48,7 +48,10 @@ impl Layer {
                 platform: None,
             },
             content: tar_gz,
-            diff_id: u.result_str(),
+            diff_id: digest::Hash {
+                algorithm: "sha256".to_string(),
+                hex: u.result_str(),
+            },
         })
     }
 }
