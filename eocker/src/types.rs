@@ -10,7 +10,7 @@ pub trait Media {
     fn is_index(&self) -> bool;
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum MediaType {
     #[serde(rename = "application/vnd.oci.descriptor.v1+json")]
     OCIContentDescriptor,

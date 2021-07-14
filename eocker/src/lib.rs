@@ -8,9 +8,64 @@ pub mod digest;
 pub mod types;
 
 #[derive(Debug)]
+pub struct Image {
+    pub manifest: Manifest,
+    pub config: ConfigFile,
+    pub layers: Vec<Layer>,
+}
+
+impl Image {
+    pub fn new_from_layer(layer: Layer) -> Result<Image, Box<dyn Error>> {
+        // build config file
+        let config = ConfigFile {
+            rootfs: RootFS {
+                diff_ids: vec![layer.diff_id.clone()],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        // serialize to JSON
+        let serial = serde_json::to_string(&config)?;
+        let raw_config = serial.as_bytes();
+        let mut c = Sha256::new();
+        c.input(&raw_config);
+        let manifest = Manifest {
+            schema_version: 2,
+            media_type: Some(MediaType::DockerManifestSchema2),
+            config: Descriptor {
+                media_type: MediaType::DockerConfigJSON,
+                size: raw_config.len() as i64,
+                digest: digest::Hash {
+                    algorithm: "sha256".to_string(),
+                    hex: c.result_str(),
+                },
+                urls: None,
+                annotations: None,
+                platform: None,
+            },
+            layers: vec![layer.descriptor.clone()],
+            annotations: None,
+        };
+        Ok(Image {
+            manifest: manifest,
+            config: config,
+            layers: vec![layer],
+        })
+    }
+
+    pub fn get_manifest(&self) -> &Manifest {
+        &self.manifest
+    }
+
+    pub fn get_config(&self) -> &ConfigFile {
+        &self.config
+    }
+}
+
+#[derive(Debug)]
 pub struct Layer {
     pub content: Vec<u8>,
-    pub diff_id: String,
+    pub diff_id: digest::Hash,
     pub descriptor: Descriptor,
 }
 
@@ -48,11 +103,15 @@ impl Layer {
                 platform: None,
             },
             content: tar_gz,
-            diff_id: u.result_str(),
+            diff_id: digest::Hash {
+                algorithm: "sha256".to_string(),
+                hex: u.result_str(),
+            },
         })
     }
 }
 
+#[serde_with::skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Manifest {
@@ -63,6 +122,7 @@ pub struct Manifest {
     pub annotations: Option<HashMap<String, String>>,
 }
 
+#[serde_with::skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct IndexManifest {
@@ -72,7 +132,8 @@ pub struct IndexManifest {
     pub annotations: Option<HashMap<String, String>>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[serde_with::skip_serializing_none]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Descriptor {
     pub media_type: MediaType,
@@ -83,7 +144,8 @@ pub struct Descriptor {
     pub platform: Option<Platform>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[serde_with::skip_serializing_none]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Platform {
     pub architecture: String,
     pub os: String,
@@ -95,7 +157,8 @@ pub struct Platform {
     pub features: Option<Vec<String>>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[serde_with::skip_serializing_none]
+#[derive(Serialize, Deserialize, Debug, Default)]
 pub struct ConfigFile {
     pub architecture: String,
     pub author: Option<String>,
@@ -105,12 +168,13 @@ pub struct ConfigFile {
     pub history: Option<Vec<History>>,
     pub os: String,
     pub rootfs: RootFS,
-    pub config: Config,
+    pub config: Option<Config>,
     #[serde(rename = "os.version")]
     pub os_version: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[serde_with::skip_serializing_none]
+#[derive(Serialize, Deserialize, Debug, Default)]
 pub struct History {
     pub author: Option<String>,
     pub created: Option<chrono::DateTime<chrono::Utc>>,
@@ -126,7 +190,17 @@ pub struct RootFS {
     pub diff_ids: Vec<digest::Hash>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+impl Default for RootFS {
+    fn default() -> Self {
+        RootFS {
+            root_fs_type: "layers".to_string(),
+            diff_ids: vec![],
+        }
+    }
+}
+
+#[serde_with::skip_serializing_none]
+#[derive(Serialize, Deserialize, Debug, Default)]
 pub struct HealthConfig {
     pub test: Option<Vec<String>>,
     pub interval: Option<time::Duration>,
@@ -135,7 +209,8 @@ pub struct HealthConfig {
     pub retries: Option<i32>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[serde_with::skip_serializing_none]
+#[derive(Serialize, Deserialize, Debug, Default)]
 #[serde(rename_all = "PascalCase")]
 pub struct Config {
     pub attach_stderr: Option<bool>,
