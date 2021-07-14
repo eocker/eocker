@@ -56,6 +56,7 @@ impl Layer {
     }
 }
 
+#[serde_with::skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Manifest {
@@ -66,6 +67,7 @@ pub struct Manifest {
     pub annotations: Option<HashMap<String, String>>,
 }
 
+#[serde_with::skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct IndexManifest {
@@ -75,7 +77,8 @@ pub struct IndexManifest {
     pub annotations: Option<HashMap<String, String>>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[serde_with::skip_serializing_none]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Descriptor {
     pub media_type: MediaType,
@@ -86,7 +89,8 @@ pub struct Descriptor {
     pub platform: Option<Platform>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[serde_with::skip_serializing_none]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Platform {
     pub architecture: String,
     pub os: String,
@@ -98,7 +102,8 @@ pub struct Platform {
     pub features: Option<Vec<String>>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[serde_with::skip_serializing_none]
+#[derive(Serialize, Deserialize, Debug, Default)]
 pub struct ConfigFile {
     pub architecture: String,
     pub author: Option<String>,
@@ -108,12 +113,13 @@ pub struct ConfigFile {
     pub history: Option<Vec<History>>,
     pub os: String,
     pub rootfs: RootFS,
-    pub config: Config,
+    pub config: Option<Config>,
     #[serde(rename = "os.version")]
     pub os_version: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[serde_with::skip_serializing_none]
+#[derive(Serialize, Deserialize, Debug, Default)]
 pub struct History {
     pub author: Option<String>,
     pub created: Option<chrono::DateTime<chrono::Utc>>,
@@ -129,7 +135,17 @@ pub struct RootFS {
     pub diff_ids: Vec<digest::Hash>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+impl Default for RootFS {
+    fn default() -> Self {
+        RootFS {
+            root_fs_type: "layers".to_string(),
+            diff_ids: vec![],
+        }
+    }
+}
+
+#[serde_with::skip_serializing_none]
+#[derive(Serialize, Deserialize, Debug, Default)]
 pub struct HealthConfig {
     pub test: Option<Vec<String>>,
     pub interval: Option<time::Duration>,
@@ -138,7 +154,8 @@ pub struct HealthConfig {
     pub retries: Option<i32>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[serde_with::skip_serializing_none]
+#[derive(Serialize, Deserialize, Debug, Default)]
 #[serde(rename_all = "PascalCase")]
 pub struct Config {
     pub attach_stderr: Option<bool>,

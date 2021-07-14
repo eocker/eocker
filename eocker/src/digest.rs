@@ -1,6 +1,6 @@
 use serde::{de::Error, Deserialize, Deserializer, Serialize, Serializer};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Hash {
     pub algorithm: String,
     pub hex: String,
