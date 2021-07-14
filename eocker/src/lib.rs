@@ -8,6 +8,61 @@ pub mod digest;
 pub mod types;
 
 #[derive(Debug)]
+pub struct Image {
+    pub manifest: Manifest,
+    pub config: ConfigFile,
+    pub layers: Vec<Layer>,
+}
+
+impl Image {
+    pub fn new_from_layer(layer: Layer) -> Result<Image, Box<dyn Error>> {
+        // build config file
+        let config = ConfigFile {
+            rootfs: RootFS {
+                diff_ids: vec![layer.diff_id.clone()],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        // serialize to JSON
+        let serial = serde_json::to_string(&config)?;
+        let raw_config = serial.as_bytes();
+        let mut c = Sha256::new();
+        c.input(&raw_config);
+        let manifest = Manifest {
+            schema_version: 2,
+            media_type: Some(MediaType::DockerManifestSchema2),
+            config: Descriptor {
+                media_type: MediaType::DockerConfigJSON,
+                size: raw_config.len() as i64,
+                digest: digest::Hash {
+                    algorithm: "sha256".to_string(),
+                    hex: c.result_str(),
+                },
+                urls: None,
+                annotations: None,
+                platform: None,
+            },
+            layers: vec![layer.descriptor.clone()],
+            annotations: None,
+        };
+        Ok(Image {
+            manifest: manifest,
+            config: config,
+            layers: vec![layer],
+        })
+    }
+
+    pub fn get_manifest(&self) -> &Manifest {
+        &self.manifest
+    }
+
+    pub fn get_config(&self) -> &ConfigFile {
+        &self.config
+    }
+}
+
+#[derive(Debug)]
 pub struct Layer {
     pub content: Vec<u8>,
     pub diff_id: digest::Hash,
