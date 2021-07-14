@@ -1,9 +1,57 @@
+use crypto::{digest::Digest, sha2::Sha256};
+use flate2::{write::GzEncoder, Compression};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, time};
+use std::{collections::HashMap, error::Error, io::Write, time};
 use types::MediaType;
 
 pub mod digest;
 pub mod types;
+
+#[derive(Debug)]
+pub struct Layer {
+    pub content: Vec<u8>,
+    pub diff_id: String,
+    pub descriptor: Descriptor,
+}
+
+impl Layer {
+    pub fn new_for_content(content: &[u8], path: &str) -> Result<Layer, Box<dyn Error>> {
+        let mut header = tar::Header::new_gnu();
+        header.set_path(path).unwrap();
+        header.set_size(content.len() as u64);
+        header.set_mode(0o644);
+        header.set_cksum();
+        // create tarball
+        let mut tar = tar::Builder::new(Vec::new());
+        tar.append(&header, content)?;
+        let t = tar.into_inner()?;
+        // get diff ID from uncompressed archive
+        let mut u = Sha256::new();
+        u.input(&t);
+        // gzip tarball
+        let mut enc = GzEncoder::new(Vec::new(), Compression::fast());
+        enc.write_all(&t)?;
+        let tar_gz = enc.finish()?;
+        // get digest from compressed archive
+        let mut c = Sha256::new();
+        c.input(&tar_gz);
+        Ok(Layer {
+            descriptor: Descriptor {
+                media_type: MediaType::DockerLayer,
+                size: tar_gz.len() as i64,
+                digest: digest::Hash {
+                    algorithm: "sha256".to_string(),
+                    hex: c.result_str(),
+                },
+                urls: None,
+                annotations: None,
+                platform: None,
+            },
+            content: tar_gz,
+            diff_id: u.result_str(),
+        })
+    }
+}
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
