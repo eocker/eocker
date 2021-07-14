@@ -36,7 +36,7 @@ pub enum MediaType {
     DockerManifestSchema2,
     #[serde(rename = "application/vnd.docker.distribution.manifest.list.v2+json")]
     DockerManifestList,
-    #[serde(rename = "application/vnd.docker.image.rootfs.foreign.diff.tar.gzip")]
+    #[serde(rename = "application/vnd.docker.image.rootfs.diff.tar.gzip")]
     DockerLayer,
     #[serde(rename = "application/vnd.docker.container.image.v1+json")]
     DockerConfigJSON,
