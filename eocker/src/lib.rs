@@ -1,4 +1,4 @@
-use crypto::{digest::Digest, sha2::Sha256};
+use sha2::{Digest, Sha256};
 use flate2::{write::GzEncoder, Compression};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, error::Error, io::Write, time};
@@ -28,7 +28,7 @@ impl Image {
         let serial = serde_json::to_string(&config)?;
         let raw_config = serial.as_bytes();
         let mut c = Sha256::new();
-        c.input(&raw_config);
+        c.update(&raw_config);
         let manifest = Manifest {
             schema_version: 2,
             media_type: Some(MediaType::DockerManifestSchema2),
@@ -37,7 +37,7 @@ impl Image {
                 size: raw_config.len() as i64,
                 digest: digest::Hash {
                     algorithm: "sha256".to_string(),
-                    hex: c.result_str(),
+                    hex: format!("{:x}", c.finalize()),
                 },
                 urls: None,
                 annotations: None,
@@ -82,21 +82,21 @@ impl Layer {
         let t = tar.into_inner()?;
         // get diff ID from uncompressed archive
         let mut u = Sha256::new();
-        u.input(&t);
+        u.update(&t);
         // gzip tarball
         let mut enc = GzEncoder::new(Vec::new(), Compression::fast());
         enc.write_all(&t)?;
         let tar_gz = enc.finish()?;
         // get digest from compressed archive
         let mut c = Sha256::new();
-        c.input(&tar_gz);
+        c.update(&tar_gz);
         Ok(Layer {
             descriptor: Descriptor {
                 media_type: MediaType::DockerLayer,
                 size: tar_gz.len() as i64,
                 digest: digest::Hash {
                     algorithm: "sha256".to_string(),
-                    hex: c.result_str(),
+                    hex: format!("{:x}", c.finalize()),
                 },
                 urls: None,
                 annotations: None,
@@ -105,7 +105,7 @@ impl Layer {
             content: tar_gz,
             diff_id: digest::Hash {
                 algorithm: "sha256".to_string(),
-                hex: u.result_str(),
+                hex: format!("{:x}", u.finalize()),
             },
         })
     }
