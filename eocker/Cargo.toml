@@ -14,4 +14,4 @@ serde_with = { version = "1.9.4", features = ["json"] }
 chrono = { version = "0.4.1", features = ["serde"] }
 tar = "0.4"
 flate2 = "1.0"
-rust-crypto = "^0.2"
+sha2 = "0.9"
