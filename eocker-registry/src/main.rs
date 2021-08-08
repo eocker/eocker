@@ -1,20 +1,17 @@
-use std::convert::TryFrom;
-use warp::Filter;
-use eocker::types;
-use eocker::types::Media;
-use urlencoding::decode;
+use tokio::sync::broadcast;
+
+mod codes;
+mod filters;
+mod handlers;
+mod store;
 
 #[tokio::main]
 async fn main() {
-    let is_image = warp::path!("is_image" / String)
-        .map(|name: String| {
-            let d = decode(&name).unwrap().into_owned();
-            println!("{:?}", d);
-            let v = types::MediaType::try_from(d.as_str()).unwrap();
-            format!("Is image?: {}", v.is_image())
-        });
+    let (tx, _) = broadcast::channel::<String>(10);
+    let blob_store = store::new_blob_store();
+    let manifest_store = store::new_manifest_store();
 
-    warp::serve(is_image)
+    warp::serve(filters::registry(manifest_store, blob_store, tx))
         .run(([127, 0, 0, 1], 8080))
         .await;
 }
