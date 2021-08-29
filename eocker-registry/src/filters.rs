@@ -189,12 +189,8 @@ pub fn upload_chunk(
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path!("v2" / String / "blobs" / "uploads" / Uuid)
         .and(warp::patch())
-        .and(warp::header("Content-Length"))
-        .and(warp::header::exact(
-            "Content-Type",
-            "application/octet-stream",
-        ))
-        .and(warp::header("Content-Range"))
+        .and(warp::header::optional::<String>("Content-Length"))
+        .and(warp::header::optional::<String>("Content-Range"))
         .and(warp::body::bytes())
         .and(with_upload_store(store))
         .and_then(store_chunk)
@@ -208,10 +204,6 @@ pub fn push_blob(
     warp::path!("v2" / String / "blobs" / "uploads" / Uuid)
         .and(warp::put())
         .and(warp::header("Content-Length"))
-        .and(warp::header::exact(
-            "Content-Type",
-            "application/octet-stream",
-        ))
         .and(warp::query::<PushQuery>())
         .and(warp::body::bytes())
         .and(with_blob_store(store))
@@ -225,10 +217,7 @@ pub fn push_manifest(
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path!("v2" / String / "manifests" / String)
         .and(warp::put())
-        .and(warp::header::exact(
-            "Content-Type",
-            "application/vnd.oci.image.manifest.v1+json",
-        ))
+        .and(warp::header("Content-Type"))
         .and(warp::body::bytes())
         .and(with_manifest_store(store))
         .and_then(store_manifest)
