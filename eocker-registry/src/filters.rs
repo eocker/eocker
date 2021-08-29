@@ -1,14 +1,12 @@
-use futures::Stream;
-use futures::StreamExt;
-use tokio::sync::broadcast;
-use tokio_stream::wrappers::BroadcastStream;
 use uuid::Uuid;
 use warp::Filter;
 
 use super::handlers::{
-    blob_exists, get_blob, get_manifest, manifest_exists, store_blob, store_chunk, store_manifest,
+    blob_exists, get_blob, get_manifest, manifest_exists, send_events, store_blob, store_chunk,
+    store_manifest,
 };
 
+use super::channel::ChannelMap;
 use super::store::{BlobStore, ManifestStore, PushQuery, UploadStore};
 
 fn with_blob_store(
@@ -29,54 +27,38 @@ fn with_manifest_store(
     warp::any().map(move || store.clone())
 }
 
-fn with_tx(
-    tx: broadcast::Sender<String>,
-) -> impl Filter<Extract = (broadcast::Sender<String>,), Error = std::convert::Infallible> + Clone {
-    warp::any().map(move || tx.clone())
-}
-
-fn with_rx(
-    tx: broadcast::Sender<String>,
-) -> impl Filter<Extract = (broadcast::Receiver<String>,), Error = std::convert::Infallible> + Clone
-{
-    warp::any().map(move || tx.subscribe())
+fn with_cm(
+    cm: ChannelMap,
+) -> impl Filter<Extract = (ChannelMap,), Error = std::convert::Infallible> + Clone {
+    warp::any().map(move || cm.clone())
 }
 
 pub fn registry(
     manifests: ManifestStore,
     blobs: BlobStore,
     uploads: UploadStore,
-    tx: broadcast::Sender<String>,
+    cm: ChannelMap,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    events(tx.clone())
-        .or(support(tx))
-        .or(pull_manifest(manifests.clone()))
-        .or(pull_blob(blobs.clone()))
-        .or(check_manifest(manifests.clone()))
-        .or(check_blob(blobs.clone()))
+    events(cm.clone())
+        .or(support())
+        .or(pull_manifest(manifests.clone(), cm.clone()))
+        .or(pull_blob(blobs.clone(), cm.clone()))
+        .or(check_manifest(manifests.clone(), cm.clone()))
+        .or(check_blob(blobs.clone(), cm.clone()))
         .or(blob_location())
-        .or(upload_chunk(uploads.clone()))
+        .or(upload_chunk(uploads.clone(), cm.clone()))
         .or(push_blob_location())
-        .or(push_blob(blobs, uploads))
-        .or(push_manifest(manifests))
+        .or(push_blob(blobs, uploads, cm.clone()))
+        .or(push_manifest(manifests, cm))
 }
 
 pub fn events(
-    tx: broadcast::Sender<String>,
+    cm: ChannelMap,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    warp::path("events")
+    warp::path!("events" / String)
         .and(warp::get())
-        .and(with_rx(tx))
-        .map(|rx: broadcast::Receiver<String>| {
-            warp::sse::reply(convert_broadcast(BroadcastStream::new(rx)))
-        })
-}
-
-fn convert_broadcast(
-    s: tokio_stream::wrappers::BroadcastStream<String>,
-) -> impl Stream<Item = Result<warp::sse::Event, warp::Error>> + Send + 'static {
-    // Convert broadcast stream messages into server side events.
-    s.map(|msg| Ok(warp::sse::Event::default().data(msg.unwrap())))
+        .and(with_cm(cm))
+        .and_then(send_events)
 }
 
 // --- Support
@@ -84,16 +66,8 @@ fn convert_broadcast(
 // Specification Support
 // GET /v2/
 // Does not currently support authn / authz checks.
-pub fn support(
-    tx: broadcast::Sender<String>,
-) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    warp::path!("v2")
-        .and(warp::get())
-        .and(with_tx(tx))
-        .map(|tx: broadcast::Sender<String>| {
-            tx.send("support".to_string()).unwrap();
-            warp::reply()
-        })
+pub fn support() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    warp::path!("v2").and(warp::get()).map(|| warp::reply())
 }
 
 // --- Pull
@@ -102,10 +76,12 @@ pub fn support(
 // GET /v2/<name>/manifests/<reference>
 pub fn pull_manifest(
     store: ManifestStore,
+    cm: ChannelMap,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path!("v2" / String / "manifests" / String)
         .and(warp::get())
         .and(with_manifest_store(store))
+        .and(with_cm(cm))
         .and_then(get_manifest)
 }
 
@@ -113,10 +89,12 @@ pub fn pull_manifest(
 // GET /v2/<name>/blobs/<digest>
 pub fn pull_blob(
     store: BlobStore,
+    cm: ChannelMap,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path!("v2" / String / "blobs" / String)
         .and(warp::get())
         .and(with_blob_store(store))
+        .and(with_cm(cm))
         .and_then(get_blob)
 }
 
@@ -124,10 +102,12 @@ pub fn pull_blob(
 // HEAD /v2/<name>/manifests/<reference>
 pub fn check_manifest(
     store: ManifestStore,
+    cm: ChannelMap,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path!("v2" / String / "manifests" / String)
         .and(warp::head())
         .and(with_manifest_store(store))
+        .and(with_cm(cm))
         .and_then(manifest_exists)
 }
 
@@ -135,10 +115,12 @@ pub fn check_manifest(
 // HEAD /v2/<name>/blobs/<digest>
 pub fn check_blob(
     store: BlobStore,
+    cm: ChannelMap,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path!("v2" / String / "blobs" / String)
         .and(warp::head())
         .and(with_blob_store(store))
+        .and(with_cm(cm))
         .and_then(blob_exists)
 }
 
@@ -185,6 +167,7 @@ pub fn push_blob_location(
 // PATCH /v2/<name>/blobs/uploads/<uuid>
 pub fn upload_chunk(
     store: UploadStore,
+    cm: ChannelMap,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path!("v2" / String / "blobs" / "uploads" / Uuid)
         .and(warp::patch())
@@ -192,6 +175,7 @@ pub fn upload_chunk(
         .and(warp::header::optional::<String>("Content-Range"))
         .and(warp::body::bytes())
         .and(with_upload_store(store))
+        .and(with_cm(cm))
         .and_then(store_chunk)
 }
 
@@ -201,6 +185,7 @@ pub fn upload_chunk(
 pub fn push_blob(
     blob_store: BlobStore,
     upload_store: UploadStore,
+    cm: ChannelMap,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path!("v2" / String / "blobs" / "uploads" / Uuid)
         .and(warp::put())
@@ -209,6 +194,7 @@ pub fn push_blob(
         .and(warp::body::bytes())
         .and(with_blob_store(blob_store))
         .and(with_upload_store(upload_store))
+        .and(with_cm(cm))
         .and_then(store_blob)
 }
 
@@ -216,11 +202,13 @@ pub fn push_blob(
 // PUT /v2/<name>/manifests/<reference>
 pub fn push_manifest(
     store: ManifestStore,
+    cm: ChannelMap,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path!("v2" / String / "manifests" / String)
         .and(warp::put())
         .and(warp::header("Content-Type"))
         .and(warp::body::bytes())
         .and(with_manifest_store(store))
+        .and(with_cm(cm))
         .and_then(store_manifest)
 }
