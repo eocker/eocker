@@ -56,9 +56,9 @@ pub fn registry(
         .or(check_manifest(manifests.clone()))
         .or(check_blob(blobs.clone()))
         .or(blob_location())
-        .or(upload_chunk(uploads))
+        .or(upload_chunk(uploads.clone()))
         .or(push_blob_location())
-        .or(push_blob(blobs))
+        .or(push_blob(blobs, uploads))
         .or(push_manifest(manifests))
 }
 
@@ -197,16 +197,19 @@ pub fn upload_chunk(
 }
 
 // Push Blob
+// Could be committing chunked upload or doing monolithic push.
 // PUT /v2/<name>/blobs/uploads/<uuid>?digest=<digest>
 pub fn push_blob(
-    store: BlobStore,
+    blob_store: BlobStore,
+    upload_store: UploadStore,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path!("v2" / String / "blobs" / "uploads" / Uuid)
         .and(warp::put())
         .and(warp::header("Content-Length"))
         .and(warp::query::<PushQuery>())
         .and(warp::body::bytes())
-        .and(with_blob_store(store))
+        .and(with_blob_store(blob_store))
+        .and(with_upload_store(upload_store))
         .and_then(store_blob)
 }
 
