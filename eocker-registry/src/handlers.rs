@@ -4,7 +4,7 @@ use std::{collections::HashMap, convert::Infallible};
 use uuid::Uuid;
 use warp::http::StatusCode;
 
-use super::store::{BlobStore, UploadStore, Manifest, ManifestStore, PushQuery};
+use super::store::{BlobStore, Manifest, ManifestStore, PushQuery, UploadStore};
 
 pub async fn store_chunk(
     name: String,
@@ -39,11 +39,13 @@ pub async fn store_chunk(
     let id_string = id.to_string();
     match s.get_mut(id_string.as_str()) {
         None => {
-            // Make sure content range begins with 0
             match start {
+                // If no content range provided, we treat it as 0
                 None => {
                     s.insert(id_string, content);
                 }
+                // If content range is provided, it must start with 0 because we
+                // don't have any existing chunks
                 Some(start) => {
                     if start != 0 {
                         return Ok(warp::http::Response::builder()
@@ -109,10 +111,11 @@ pub async fn store_blob(
             buf.write(b).unwrap();
             buf.write(&content).unwrap();
             s.insert(query.digest, buf.into_inner().into());
+            // Blob has been uploaded, chunks can be removed from upload store
             u.remove(id_string.as_str());
         }
     }
-    
+
     Ok(StatusCode::CREATED)
 }
 

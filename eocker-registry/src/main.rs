@@ -12,7 +12,12 @@ async fn main() {
     let upload_store = store::new_upload_store();
     let manifest_store = store::new_manifest_store();
 
-    warp::serve(filters::registry(manifest_store, blob_store, upload_store,  tx))
-        .run(([127, 0, 0, 1], 8080))
-        .await;
+    warp::serve(filters::registry(
+        manifest_store,
+        blob_store,
+        upload_store,
+        tx,
+    ))
+    .run(([127, 0, 0, 1], 8080))
+    .await;
 }

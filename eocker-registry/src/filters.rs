@@ -9,7 +9,7 @@ use super::handlers::{
     blob_exists, get_blob, get_manifest, manifest_exists, store_blob, store_chunk, store_manifest,
 };
 
-use super::store::{BlobStore, UploadStore, ManifestStore, PushQuery};
+use super::store::{BlobStore, ManifestStore, PushQuery, UploadStore};
 
 fn with_blob_store(
     store: BlobStore,
@@ -22,7 +22,6 @@ fn with_upload_store(
 ) -> impl Filter<Extract = (UploadStore,), Error = std::convert::Infallible> + Clone {
     warp::any().map(move || store.clone())
 }
-
 
 fn with_manifest_store(
     store: ManifestStore,
