@@ -1,9 +1,72 @@
-use bytes::Bytes;
+use bytes::{BufMut, Bytes};
 use std::{collections::HashMap, convert::Infallible};
 use uuid::Uuid;
 use warp::http::StatusCode;
+use std::io::Write;
 
 use super::store::{BlobStore, Manifest, ManifestStore, PushQuery};
+
+pub async fn store_chunk(
+    name: String,
+    id: Uuid,
+    _: String,
+    content_length: String,
+    content: Bytes,
+    store: BlobStore,
+) -> Result<impl warp::Reply, Infallible> {
+    // NOTE(hasheddan): chunks are currently stored at global scope
+    let spl = content_length.split("-").collect::<Vec<&str>>();
+    if spl.len() != 2 {
+        return Ok(warp::http::Response::builder()
+            .status(StatusCode::RANGE_NOT_SATISFIABLE)
+            .body(bytes::Bytes::new()));
+    }
+    let start = match spl[0].parse::<usize>() {
+        Ok(start) => start,
+        Err(_) => {
+            return Ok(warp::http::Response::builder()
+                .status(StatusCode::RANGE_NOT_SATISFIABLE)
+                .body(bytes::Bytes::new()))
+        }
+    };
+    let mut s = store.lock().await;
+    let id_string = id.to_string();
+    match s.get_mut(id_string.as_str()) {
+        None => {
+            // Make sure content range begins with 0
+            if start != 0 {
+                return Ok(warp::http::Response::builder()
+                    .status(StatusCode::RANGE_NOT_SATISFIABLE)
+                    .body(bytes::Bytes::new()));
+            }
+            // Insert first chunk into upload store
+            s.insert(id_string, content);
+            Ok(warp::http::Response::builder()
+                .status(StatusCode::ACCEPTED)
+                .header("Location", format!("/v2/{}/blobs/uploads/{}", name, id))
+                .body(bytes::Bytes::new()))
+        }
+        Some(b) => {
+            // Ensure that content start equals length of previously uploaded
+            // chunks
+            if start != b.len() {
+                return Ok(warp::http::Response::builder()
+                    .status(StatusCode::RANGE_NOT_SATISFIABLE)
+                    .body(bytes::Bytes::new()));
+            }
+            let mut buf = vec![].writer();
+            // BufMut operations are infallible so we can unwrap these writes
+            // safely
+            buf.write(b).unwrap();
+            buf.write(&content).unwrap();
+            *b = buf.into_inner().into();
+            Ok(warp::http::Response::builder()
+                .status(StatusCode::ACCEPTED)
+                .header("Location", format!("/v2/{}/blobs/uploads/{}", name, id))
+                .body(bytes::Bytes::new()))
+        }
+    }
+}
 
 pub async fn store_blob(
     _: String,
