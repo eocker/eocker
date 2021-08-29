@@ -17,6 +17,13 @@ pub fn new_blob_store() -> BlobStore {
     Arc::new(Mutex::new(HashMap::new()))
 }
 
+// TODO(hasheddan): consider using a RwLock
+pub type UploadStore = Arc<Mutex<HashMap<String, Bytes>>>;
+
+pub fn new_upload_store() -> UploadStore {
+    Arc::new(Mutex::new(HashMap::new()))
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Manifest {
     pub content_type: String,
