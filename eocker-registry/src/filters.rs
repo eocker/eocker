@@ -1,21 +1,28 @@
+use futures::Stream;
 use futures::StreamExt;
 use tokio::sync::broadcast;
 use tokio_stream::wrappers::BroadcastStream;
 use uuid::Uuid;
-use futures::Stream;
 use warp::Filter;
 
 use super::handlers::{
-    blob_exists, get_blob, get_manifest, manifest_exists, store_blob, store_manifest,
+    blob_exists, get_blob, get_manifest, manifest_exists, store_blob, store_chunk, store_manifest,
 };
 
-use super::store::{BlobStore, ManifestStore, PushQuery};
+use super::store::{BlobStore, UploadStore, ManifestStore, PushQuery};
 
 fn with_blob_store(
     store: BlobStore,
 ) -> impl Filter<Extract = (BlobStore,), Error = std::convert::Infallible> + Clone {
     warp::any().map(move || store.clone())
 }
+
+fn with_upload_store(
+    store: UploadStore,
+) -> impl Filter<Extract = (UploadStore,), Error = std::convert::Infallible> + Clone {
+    warp::any().map(move || store.clone())
+}
+
 
 fn with_manifest_store(
     store: ManifestStore,
@@ -39,6 +46,7 @@ fn with_rx(
 pub fn registry(
     manifests: ManifestStore,
     blobs: BlobStore,
+    uploads: UploadStore,
     tx: broadcast::Sender<String>,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     events(tx.clone())
@@ -48,6 +56,7 @@ pub fn registry(
         .or(check_manifest(manifests.clone()))
         .or(check_blob(blobs.clone()))
         .or(blob_location())
+        .or(upload_chunk(uploads))
         .or(push_blob_location())
         .or(push_blob(blobs))
         .or(push_manifest(manifests))
@@ -64,11 +73,11 @@ pub fn events(
         })
 }
 
-fn convert_broadcast(s: tokio_stream::wrappers::BroadcastStream<String>) -> impl Stream<Item = Result<warp::sse::Event, warp::Error>> + Send + 'static {
+fn convert_broadcast(
+    s: tokio_stream::wrappers::BroadcastStream<String>,
+) -> impl Stream<Item = Result<warp::sse::Event, warp::Error>> + Send + 'static {
     // Convert broadcast stream messages into server side events.
-    s.map(|msg| {
-        Ok(warp::sse::Event::default().data(msg.unwrap()))
-    })
+    s.map(|msg| Ok(warp::sse::Event::default().data(msg.unwrap())))
 }
 
 // --- Support
@@ -76,11 +85,16 @@ fn convert_broadcast(s: tokio_stream::wrappers::BroadcastStream<String>) -> impl
 // Specification Support
 // GET /v2/
 // Does not currently support authn / authz checks.
-pub fn support(tx: broadcast::Sender<String>) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    warp::path!("v2").and(warp::get()).and(with_tx(tx)).map(|tx: broadcast::Sender<String>| {
-        tx.send("support".to_string()).unwrap();
-        warp::reply()
-    })
+pub fn support(
+    tx: broadcast::Sender<String>,
+) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    warp::path!("v2")
+        .and(warp::get())
+        .and(with_tx(tx))
+        .map(|tx: broadcast::Sender<String>| {
+            tx.send("support".to_string()).unwrap();
+            warp::reply()
+        })
 }
 
 // --- Pull
@@ -130,7 +144,7 @@ pub fn check_blob(
 }
 
 // --- Push
-// Currently only support monolithic POST / PUT
+// Currently only support monolithic POST / PUT and chunked upload
 
 // Blob Location
 // POST /v2/<name>/blobs/uploads
@@ -166,6 +180,24 @@ pub fn push_blob_location(
                 format!("/v2/{}/blobs/uploads/{}", name, Uuid::new_v4()),
             )
         })
+}
+
+// Upload Chunk
+// PATCH /v2/<name>/blobs/uploads/<uuid>
+pub fn upload_chunk(
+    store: UploadStore,
+) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    warp::path!("v2" / String / "blobs" / "uploads" / Uuid)
+        .and(warp::patch())
+        .and(warp::header("Content-Length"))
+        .and(warp::header::exact(
+            "Content-Type",
+            "application/octet-stream",
+        ))
+        .and(warp::header("Content-Range"))
+        .and(warp::body::bytes())
+        .and(with_upload_store(store))
+        .and_then(store_chunk)
 }
 
 // Push Blob
