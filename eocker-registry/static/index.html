@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<body>
+<script src="//d3js.org/d3.v5.min.js"></script>
+<script src="https://unpkg.com/@hpcc-js/wasm@0.3.11/dist/index.min.js"></script>
+<script src="https://unpkg.com/d3-graphviz@3.0.5/build/d3-graphviz.js"></script>
+<div id="graph" style="text-align: center;"></div>
+<script>
+var eventIndex = 0;
+var currentState = {
+  objects: [],
+  edges: []
+};
+
+// Queue.
+var dots = [];
+var graphviz = d3.select("#graph").graphviz().growEnteringEdges(true)
+    .transition(function () {
+        return d3.transition("main")
+            .ease(d3.easeLinear)
+            .delay(100)
+            .duration(100);
+    });
+    //.logEvents(true);
+
+function render() {
+  var dot = dots.shift();
+  console.log(dot);
+  graphviz
+    .renderDot(dot)
+    .on("end", function () {
+      getEvent();
+    });
+}
+
+function renderState(state) {
+  return `digraph {
+  newrank=true;
+  rankdir=LR;
+
+  subgraph cluster_manifests {
+    label = "Manifests";
+    " " [style=invis];
+
+    ${renderManifests(state)}
+  }
+
+  subgraph cluster_blobs {
+    label = "Blobs";
+    "  " [style=invis];
+
+    ${renderNodes(state, "Blob")}
+  }
+
+  subgraph cluster_uploads {
+    label = "Uploads";
+    "   " [style=invis];
+
+    ${renderNodes(state, "Upload")}
+  }
+
+  " " -> "  " [style=invis];
+  "  " -> "   " [style=invis];
+  ${renderEdges(state)}
+}`;
+}
+
+// TODO: This should be slightly different for image index.
+// Rank should not be the same.
+function renderManifests(state) {
+  return renderNodes(state, "Manifest");
+}
+
+function renderNodes(state, kind) {
+  let objs = [];
+  for (let obj of state.objects) {
+    if (obj.Kind == kind) {
+      let s = `"${obj.Identifier}"`;
+      if (obj.color) {
+        s += ` [color="${obj.color}", penwidth=2]`;
+      }
+      objs.push(s);
+    }
+  }
+
+  return `{
+      rank=same;
+
+      ${objs.join(';\n      ')}
+    }`;
+}
+
+function renderEdges(state) {
+  let edges = [];
+  for (let edge of state.edges) {
+    let src = edge.src;
+    let dst = edge.dst;
+
+    if (src.Kind = "Upload") {
+      src = edge.dst;
+      dst = edge.src;
+    }
+
+    let s = `"${src.Identifier}" -> "${dst.Identifier}"`;
+    if (edge.color) {
+      if (src.Kind = "Upload") {
+        s += ` [color="${edge.color}", dir=back]`;
+      } else {
+        s += ` [color="${edge.color}"]`;
+      }
+    } else if (src.Kind = "Upload") {
+        s += ` [dir=back]`;
+    }
+
+    edges.push(s);
+  }
+
+  // TODO If no edges, add invisible edges?
+  return `${edges.join(';\n  ')}`;
+}
+
+var colors = {
+  0: "orange",
+  200: "green",
+  201: "blue",
+  202: "yellow",
+  404: "red"
+};
+
+function match(obj, e) {
+  return obj.Kind == e.Kind && obj.Identifier == e.Identifier && obj.Repo == e.Repo;
+}
+
+// (state, event) => state
+function updateState(state, e) {
+  let nodeFound = false;
+
+  console.log(e);
+  if (!e.Objects) {
+    e.Objects = [];
+  }
+
+  // Update existing node.
+  for (let i = 0; i < state.objects.length; i++) {
+    let obj = state.objects[i];
+    if (!nodeFound && match(obj, e)) {
+      obj.color = colors[e.Status] || "black";
+      if (e.Kind == "Upload" && e.Method == "Put") {
+        state.objects[i].temporary = true;
+      }
+      nodeFound = true;
+      continue;
+    }
+
+    // Not updated.
+    delete obj.color;
+    if (obj.temporary === true) {
+      state.objects.splice(i, 1);
+      i = i-1;
+    }
+  }
+
+  // Update existing edges.
+  outer:
+  for (let i = 0; i < state.edges.length; i++) {
+    let edge = state.edges[i];
+    for (let j = 0; j < e.Objects.length; j++) {
+      if (match(edge.dst, e.Objects[j])) {
+        edge.color = colors[e.Status] || "black";
+        e.Objects.splice(j, 1);
+        continue outer;
+      }
+    }
+    
+    // Not updated.
+    delete edge.color;
+    if (edge.temporary === true) {
+      state.edges.splice(i, 1);
+      i = i-1;
+    }
+  }
+
+  // Add missing node.
+  if (!nodeFound) {
+    let obj = {
+      Kind: e.Kind,
+      Identifier: e.Identifier,
+      Repo: e.Repo,
+      color: colors[e.Status] || "black"
+    }
+    if (e.Status == 404 || (e.Kind == "Upload" && e.Method == "Put")) {
+      obj.temporary = true;
+    }
+    
+    state.objects.push(obj);
+  }
+
+  outer2:
+  for (let target of e.Objects) {
+    for (let i = 0; i < state.objects.length; i++) {
+      let obj = state.objects[i];
+        if (match(obj, target)) {
+          continue outer2;
+        }
+      }
+      target.color = colors[e.Status] || "black";
+      state.objects.push(target);
+  }
+
+  // Add missing edges.
+  for (let target of e.Objects) {
+    let edge = {
+      src: {
+        Kind: e.Kind,
+        Identifier: e.Identifier,
+        Repo: e.Repo
+      },
+      dst: {
+        Kind: target.Kind,
+        Identifier: target.Identifier,
+        Repo: target.Repo
+      },
+      color: colors[e.Status] || "black"
+    };
+    if (e.Kind = "Upload") {
+      edge.temporary = true;
+    }
+    state.edges.push(edge);
+  }
+}
+
+// TODO: Wire this up to SSE instead.
+function getEvent() {
+  fetch('/events/' + eventIndex)
+    .then(response => response.json())
+    .then(function(e) {
+      console.log(`${e.Method} ${e.Kind} ${e.Identifier} ${e.Status}`);
+      updateState(currentState, e);
+      dots.push(renderState(currentState));
+      eventIndex++;
+
+      setTimeout(render, 200);
+    });
+}
+
+getEvent();
+</script>
+
+</script>
