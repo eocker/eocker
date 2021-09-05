@@ -7,6 +7,7 @@ use tokio::sync::broadcast;
 use tokio_stream::wrappers::BroadcastStream;
 use uuid::Uuid;
 use warp::http::StatusCode;
+use sha2::{Digest, Sha256};
 
 use super::channel::{send, ChannelMap};
 use super::store::{BlobStore, Manifest, ManifestStore, PushQuery, UploadStore};
@@ -222,6 +223,8 @@ pub async fn store_manifest(
     store: ManifestStore,
     cm: ChannelMap,
 ) -> Result<impl warp::Reply, Infallible> {
+    let mut c = Sha256::new();
+    c.update(&content);
     // TODO(hasheddan): consider only locking nested repo manifest hash map
     let mut s = store.lock().await;
     let e = s.entry(ns.clone()).or_insert_with(|| HashMap::new());
@@ -238,7 +241,10 @@ pub async fn store_manifest(
         cm,
     )
     .await;
-    Ok(StatusCode::CREATED)
+    Ok(warp::http::Response::builder()
+            .status(StatusCode::CREATED)
+            .header("Docker-Content-Digest", format!("sha256:{:x}", c.finalize()))
+            .body(bytes::Bytes::new()))
 }
 
 pub async fn get_manifest(

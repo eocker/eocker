@@ -196,6 +196,7 @@ dependencies = [
  "futures",
  "hyper",
  "serde",
+ "sha2",
  "tokio",
  "tokio-stream",
  "urlencoding",
