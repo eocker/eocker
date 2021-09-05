@@ -1,6 +1,7 @@
 use bytes::{BufMut, Bytes};
 use futures::Stream;
 use futures::StreamExt;
+use sha2::{Digest, Sha256};
 use std::io::Write;
 use std::{collections::HashMap, convert::Infallible};
 use tokio::sync::broadcast;
@@ -43,6 +44,7 @@ pub async fn store_chunk(
     };
     let mut s = store.lock().await;
     let id_string = id.to_string();
+    let content_len = content.len() - 1;
     match s.get_mut(id_string.as_str()) {
         None => {
             match start {
@@ -71,6 +73,7 @@ pub async fn store_chunk(
             Ok(warp::http::Response::builder()
                 .status(StatusCode::ACCEPTED)
                 .header("Location", format!("/v2/{}/blobs/uploads/{}", ns, id))
+                .header("Range", format!("0-{}", content_len))
                 .body(bytes::Bytes::new()))
         }
         Some(b) => {
@@ -220,6 +223,8 @@ pub async fn store_manifest(
     store: ManifestStore,
     cm: ChannelMap,
 ) -> Result<impl warp::Reply, Infallible> {
+    let mut c = Sha256::new();
+    c.update(&content);
     // TODO(hasheddan): consider only locking nested repo manifest hash map
     let mut s = store.lock().await;
     let e = s.entry(ns.clone()).or_insert_with(|| HashMap::new());
@@ -236,7 +241,13 @@ pub async fn store_manifest(
         cm,
     )
     .await;
-    Ok(StatusCode::CREATED)
+    Ok(warp::http::Response::builder()
+        .status(StatusCode::CREATED)
+        .header(
+            "Docker-Content-Digest",
+            format!("sha256:{:x}", c.finalize()),
+        )
+        .body(bytes::Bytes::new()))
 }
 
 pub async fn get_manifest(
