@@ -1,13 +1,13 @@
 use bytes::{BufMut, Bytes};
 use futures::Stream;
 use futures::StreamExt;
+use sha2::{Digest, Sha256};
 use std::io::Write;
 use std::{collections::HashMap, convert::Infallible};
 use tokio::sync::broadcast;
 use tokio_stream::wrappers::BroadcastStream;
 use uuid::Uuid;
 use warp::http::StatusCode;
-use sha2::{Digest, Sha256};
 
 use super::channel::{send, ChannelMap};
 use super::store::{BlobStore, Manifest, ManifestStore, PushQuery, UploadStore};
@@ -44,7 +44,7 @@ pub async fn store_chunk(
     };
     let mut s = store.lock().await;
     let id_string = id.to_string();
-    let content_len = content.len()-1;
+    let content_len = content.len() - 1;
     match s.get_mut(id_string.as_str()) {
         None => {
             match start {
@@ -242,9 +242,12 @@ pub async fn store_manifest(
     )
     .await;
     Ok(warp::http::Response::builder()
-            .status(StatusCode::CREATED)
-            .header("Docker-Content-Digest", format!("sha256:{:x}", c.finalize()))
-            .body(bytes::Bytes::new()))
+        .status(StatusCode::CREATED)
+        .header(
+            "Docker-Content-Digest",
+            format!("sha256:{:x}", c.finalize()),
+        )
+        .body(bytes::Bytes::new()))
 }
 
 pub async fn get_manifest(
