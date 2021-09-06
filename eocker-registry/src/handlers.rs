@@ -287,8 +287,8 @@ pub async fn get_manifest(
             )
             .await;
             Ok(warp::http::Response::builder()
-            .status(StatusCode::NOT_FOUND)
-            .body(bytes::Bytes::new()))
+                .status(StatusCode::NOT_FOUND)
+                .body(bytes::Bytes::new()))
         }
         Some(r) => match r.get(reference.as_str()) {
             None => {
@@ -302,8 +302,8 @@ pub async fn get_manifest(
                 )
                 .await;
                 Ok(warp::http::Response::builder()
-                .status(StatusCode::NOT_FOUND)
-                .body(bytes::Bytes::new()))
+                    .status(StatusCode::NOT_FOUND)
+                    .body(bytes::Bytes::new()))
             }
             Some(m) => {
                 send(
@@ -316,11 +316,11 @@ pub async fn get_manifest(
                 )
                 .await;
                 Ok(warp::http::Response::builder()
-                .status(StatusCode::OK)
-                // TODO(hasheddan): set Docker-Content-Digest header
-                .header("Content-Type", m.content_type.clone())
-                .header("Content-Length", m.content.len())
-                .body(m.content.clone()))
+                    .status(StatusCode::OK)
+                    // TODO(hasheddan): set Docker-Content-Digest header
+                    .header("Content-Type", m.content_type.clone())
+                    .header("Content-Length", m.content.len())
+                    .body(m.content.clone()))
             }
         },
     }
