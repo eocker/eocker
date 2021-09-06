@@ -18,7 +18,7 @@ pub async fn store_chunk(
     _: Option<String>,
     content_range: Option<String>,
     content: Bytes,
-    store: BlobStore,
+    store: UploadStore,
     cm: ChannelMap,
 ) -> Result<impl warp::Reply, Infallible> {
     // NOTE(hasheddan): chunks are currently stored at global scope
