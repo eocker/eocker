@@ -18,7 +18,7 @@ pub async fn store_chunk(
     _: Option<String>,
     content_range: Option<String>,
     content: Bytes,
-    store: BlobStore,
+    store: UploadStore,
     cm: ChannelMap,
 ) -> Result<impl warp::Reply, Infallible> {
     // NOTE(hasheddan): chunks are currently stored at global scope
@@ -239,16 +239,16 @@ pub async fn store_manifest(
 ) -> Result<impl warp::Reply, Infallible> {
     let mut c = Sha256::new();
     c.update(&content);
+    let digest = format!("sha256:{:x}", c.finalize());
     // TODO(hasheddan): consider only locking nested repo manifest hash map
     let mut s = store.lock().await;
     let e = s.entry(ns.clone()).or_insert_with(|| HashMap::new());
-    e.insert(
-        reference.clone(),
-        Manifest {
-            content_type: content_type,
-            content: content,
-        },
-    );
+    let m = Manifest {
+        content_type: content_type,
+        content: content,
+    };
+    e.insert(reference.clone(), m.clone());
+    e.insert(digest.clone(), m);
     send(
         &ns,
         "Manifest".to_string(),
@@ -260,10 +260,7 @@ pub async fn store_manifest(
     .await;
     Ok(warp::http::Response::builder()
         .status(StatusCode::CREATED)
-        .header(
-            "Docker-Content-Digest",
-            format!("sha256:{:x}", c.finalize()),
-        )
+        .header("Docker-Content-Digest", digest)
         .body(bytes::Bytes::new()))
 }
 
