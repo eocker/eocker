@@ -7,9 +7,9 @@ use std::{collections::HashMap, convert::Infallible};
 use tokio::sync::broadcast;
 use tokio_stream::wrappers::BroadcastStream;
 use uuid::Uuid;
-use warp::http::StatusCode;
+use warp::http::{Method, StatusCode};
 
-use super::channel::{send, ChannelMap};
+use super::channel::{send, ChannelMap, Event};
 use super::store::{BlobStore, Manifest, ManifestStore, PushQuery, UploadStore};
 
 pub async fn store_chunk(
@@ -63,10 +63,12 @@ pub async fn store_chunk(
                     s.insert(id_string, content);
                 }
             }
-            // Insert first chunk into upload store
             send(
                 &ns,
-                format!("({}) Upload Chunk | Location:  {}", ns, id),
+                "Upload".to_string(),
+                Method::PATCH,
+                StatusCode::ACCEPTED,
+                id.to_string(),
                 cm,
             )
             .await;
@@ -92,7 +94,10 @@ pub async fn store_chunk(
             *b = buf.into_inner().into();
             send(
                 &ns,
-                format!("({}) Upload Chunk | Location:  {}", ns, id),
+                "Upload".to_string(),
+                Method::PATCH,
+                StatusCode::ACCEPTED,
+                id_string,
                 cm,
             )
             .await;
@@ -139,10 +144,10 @@ pub async fn store_blob(
     }
     send(
         &ns,
-        format!(
-            "({}) Upload Blob | Location: {} | Digest: {}",
-            ns, id, query.digest
-        ),
+        "Blob".to_string(),
+        Method::PUT,
+        StatusCode::CREATED,
+        query.digest,
         cm,
     )
     .await;
@@ -158,7 +163,10 @@ pub async fn get_blob(
     let s = store.lock().await;
     send(
         &ns,
-        format!("({}) Download Blob | Digest: {}", ns, digest),
+        "Blob".to_string(),
+        Method::GET,
+        StatusCode::OK,
+        digest.clone(),
         cm,
     )
     .await;
@@ -175,16 +183,16 @@ pub async fn get_blob(
 }
 
 fn convert_broadcast(
-    s: tokio_stream::wrappers::BroadcastStream<String>,
+    s: tokio_stream::wrappers::BroadcastStream<Event>,
 ) -> impl Stream<Item = Result<warp::sse::Event, warp::Error>> + Send + 'static {
     // Convert broadcast stream messages into server side events.
-    s.map(|msg| Ok(warp::sse::Event::default().data(msg.unwrap())))
+    s.map(|msg| Ok(warp::sse::Event::default().json_data(msg.unwrap()).unwrap()))
 }
 
 pub async fn send_events(ns: String, cm: ChannelMap) -> Result<impl warp::Reply, Infallible> {
     let mut c = cm.lock().await;
     // Check if channel exists for namespace and create one if it does not.
-    let tx = c.entry(ns).or_insert(broadcast::channel::<String>(10).0);
+    let tx = c.entry(ns).or_insert(broadcast::channel::<Event>(10).0);
     Ok(warp::sse::reply(convert_broadcast(BroadcastStream::new(
         tx.subscribe(),
     ))))
@@ -200,7 +208,10 @@ pub async fn blob_exists(
     if s.contains_key(digest.as_str()) {
         send(
             &ns,
-            format!("({}) Check Blob: EXISTS | Digest: {}", ns, digest),
+            "Blob".to_string(),
+            Method::HEAD,
+            StatusCode::OK,
+            digest.clone(),
             cm,
         )
         .await;
@@ -208,7 +219,10 @@ pub async fn blob_exists(
     }
     send(
         &ns,
-        format!("({}) Check Blob: MISSING | Digest: {}", ns, digest),
+        "Blob".to_string(),
+        Method::HEAD,
+        StatusCode::NOT_FOUND,
+        digest.clone(),
         cm,
     )
     .await;
@@ -237,7 +251,10 @@ pub async fn store_manifest(
     );
     send(
         &ns,
-        format!("({}) Upload Manifest | Reference: {}", ns, reference),
+        "Manifest".to_string(),
+        Method::PUT,
+        StatusCode::OK,
+        reference,
         cm,
     )
     .await;
@@ -254,30 +271,57 @@ pub async fn get_manifest(
     ns: String,
     reference: String,
     store: ManifestStore,
-    sm: ChannelMap,
+    cm: ChannelMap,
 ) -> Result<impl warp::Reply, Infallible> {
     // TODO(hasheddan): consider only locking nested repo manifest hash map
     let s = store.lock().await;
-    send(
-        &ns,
-        format!("({}) Download Manifest | Reference: {}", ns, reference),
-        sm,
-    )
-    .await;
     match s.get(ns.as_str()) {
-        None => Ok(warp::http::Response::builder()
+        None => {
+            send(
+                &ns,
+                "Manifest".to_string(),
+                Method::GET,
+                StatusCode::NOT_FOUND,
+                reference,
+                cm,
+            )
+            .await;
+            Ok(warp::http::Response::builder()
             .status(StatusCode::NOT_FOUND)
-            .body(bytes::Bytes::new())),
+            .body(bytes::Bytes::new()))
+        }
         Some(r) => match r.get(reference.as_str()) {
-            None => Ok(warp::http::Response::builder()
+            None => {
+                send(
+                    &ns,
+                    "Manifest".to_string(),
+                    Method::GET,
+                    StatusCode::NOT_FOUND,
+                    reference,
+                    cm,
+                )
+                .await;
+                Ok(warp::http::Response::builder()
                 .status(StatusCode::NOT_FOUND)
-                .body(bytes::Bytes::new())),
-            Some(m) => Ok(warp::http::Response::builder()
+                .body(bytes::Bytes::new()))
+            }
+            Some(m) => {
+                send(
+                    &ns,
+                    "Manifest".to_string(),
+                    Method::GET,
+                    StatusCode::OK,
+                    reference,
+                    cm,
+                )
+                .await;
+                Ok(warp::http::Response::builder()
                 .status(StatusCode::OK)
                 // TODO(hasheddan): set Docker-Content-Digest header
                 .header("Content-Type", m.content_type.clone())
                 .header("Content-Length", m.content.len())
-                .body(m.content.clone())),
+                .body(m.content.clone()))
+            }
         },
     }
 }
@@ -292,12 +336,26 @@ pub async fn manifest_exists(
     let s = store.lock().await;
     let e = s.get(ns.as_str());
     match e {
-        None => Ok(StatusCode::NOT_FOUND),
+        None => {
+            send(
+                &ns,
+                "Manifest".to_string(),
+                Method::HEAD,
+                StatusCode::NOT_FOUND,
+                reference,
+                cm,
+            )
+            .await;
+            Ok(StatusCode::NOT_FOUND)
+        }
         Some(m) => {
             if m.contains_key(reference.as_str()) {
                 send(
                     &ns,
-                    format!("({}) Check Manifest: EXISTS | Reference: {}", ns, reference),
+                    "Manifest".to_string(),
+                    Method::HEAD,
+                    StatusCode::OK,
+                    reference,
                     cm,
                 )
                 .await;
@@ -305,7 +363,10 @@ pub async fn manifest_exists(
             }
             send(
                 &ns,
-                format!("({}) Check Blob: MISSING | Digest: {}", ns, reference),
+                "Manifest".to_string(),
+                Method::HEAD,
+                StatusCode::NOT_FOUND,
+                reference,
                 cm,
             )
             .await;
