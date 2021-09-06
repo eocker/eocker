@@ -50,6 +50,9 @@ pub fn registry(
         .or(push_blob_location())
         .or(push_blob(blobs, uploads, cm.clone()))
         .or(push_manifest(manifests, cm))
+        .or(warp::path::end()
+            .and(warp::get())
+            .and(warp::fs::file("./static/index.html")))
 }
 
 pub fn events(

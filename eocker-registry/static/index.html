@@ -4,9 +4,9 @@
 <script src="//d3js.org/d3.v5.min.js"></script>
 <script src="https://unpkg.com/@hpcc-js/wasm@0.3.11/dist/index.min.js"></script>
 <script src="https://unpkg.com/d3-graphviz@3.0.5/build/d3-graphviz.js"></script>
-<div id="graph" style="text-align: center;"></div>
+<div id="eventStream" style="text-align: left; width: 30%; height: 100%; overflow: scroll; left: 0; position: fixed; padding-left: 5x; white-space: nowrap; font-size: 10px;"></div>
+<div id="graph" style="text-align: center; width: 70%; height: 100%; right: 0; position: fixed;"></div>
 <script>
-var eventIndex = 0;
 var currentState = {
   objects: [],
   edges: []
@@ -25,12 +25,8 @@ var graphviz = d3.select("#graph").graphviz().growEnteringEdges(true)
 
 function render() {
   var dot = dots.shift();
-  console.log(dot);
   graphviz
-    .renderDot(dot)
-    .on("end", function () {
-      getEvent();
-    });
+    .renderDot(dot);
 }
 
 function renderState(state) {
@@ -74,8 +70,8 @@ function renderManifests(state) {
 function renderNodes(state, kind) {
   let objs = [];
   for (let obj of state.objects) {
-    if (obj.Kind == kind) {
-      let s = `"${obj.Identifier}"`;
+    if (obj.dataType == kind) {
+      let s = `"${obj.identifier}"`;
       if (obj.color) {
         s += ` [color="${obj.color}", penwidth=2]`;
       }
@@ -128,24 +124,24 @@ var colors = {
 };
 
 function match(obj, e) {
-  return obj.Kind == e.Kind && obj.Identifier == e.Identifier && obj.Repo == e.Repo;
+  return obj.kind == e.kind && obj.identifier == e.identifier && obj.repo == e.repo;
 }
 
 // (state, event) => state
 function updateState(state, e) {
   let nodeFound = false;
 
-  console.log(e);
-  if (!e.Objects) {
-    e.Objects = [];
+  // console.log(e);
+  if (!e.objects) {
+    e.objects = [];
   }
 
   // Update existing node.
   for (let i = 0; i < state.objects.length; i++) {
     let obj = state.objects[i];
     if (!nodeFound && match(obj, e)) {
-      obj.color = colors[e.Status] || "black";
-      if (e.Kind == "Upload" && e.Method == "Put") {
+      obj.color = colors[e.status] || "black";
+      if (e.dataType == "Upload" && e.method == "PATCH") {
         state.objects[i].temporary = true;
       }
       nodeFound = true;
@@ -183,12 +179,12 @@ function updateState(state, e) {
   // Add missing node.
   if (!nodeFound) {
     let obj = {
-      Kind: e.Kind,
-      Identifier: e.Identifier,
-      Repo: e.Repo,
-      color: colors[e.Status] || "black"
+      dataType: e.dataType,
+      identifier: e.identifier,
+      repo: e.repo,
+      color: colors[e.status] || "black"
     }
-    if (e.Status == 404 || (e.Kind == "Upload" && e.Method == "Put")) {
+    if (e.status == 404 || (e.kind == "Upload" && e.method == "PATCH")) {
       obj.temporary = true;
     }
     
@@ -196,54 +192,71 @@ function updateState(state, e) {
   }
 
   outer2:
-  for (let target of e.Objects) {
+  for (let target of e.objects) {
     for (let i = 0; i < state.objects.length; i++) {
       let obj = state.objects[i];
         if (match(obj, target)) {
           continue outer2;
         }
       }
-      target.color = colors[e.Status] || "black";
+      target.color = colors[e.status] || "black";
       state.objects.push(target);
   }
 
   // Add missing edges.
-  for (let target of e.Objects) {
+  for (let target of e.objects) {
     let edge = {
       src: {
-        Kind: e.Kind,
-        Identifier: e.Identifier,
-        Repo: e.Repo
+        kind: e.kind,
+        identifier: e.identifier,
+        repo: e.repo
       },
       dst: {
-        Kind: target.Kind,
-        Identifier: target.Identifier,
-        Repo: target.Repo
+        kind: target.kind,
+        identifier: target.identifier,
+        repo: target.repo
       },
-      color: colors[e.Status] || "black"
+      color: colors[e.status] || "black"
     };
-    if (e.Kind = "Upload") {
+    if (e.kind = "Upload") {
       edge.temporary = true;
     }
     state.edges.push(edge);
   }
 }
 
-// TODO: Wire this up to SSE instead.
-function getEvent() {
-  fetch('/events/' + eventIndex)
-    .then(response => response.json())
-    .then(function(e) {
-      console.log(`${e.Method} ${e.Kind} ${e.Identifier} ${e.Status}`);
-      updateState(currentState, e);
-      dots.push(renderState(currentState));
-      eventIndex++;
+var waitQueue = -1;
+var eventStream = document.getElementById("eventStream")
 
-      setTimeout(render, 200);
-    });
+function appendEvent(dataType, identifier, method, status) {
+  var para = document.createElement("p");
+  para.appendChild(document.createTextNode("Type: " + dataType));
+  para.appendChild(document.createElement("br"));
+  para.appendChild(document.createTextNode("Identifier: " + identifier));
+  para.appendChild(document.createElement("br"));
+  para.appendChild(document.createTextNode("Method: " + method));
+  para.appendChild(document.createElement("br"));
+  para.appendChild(document.createTextNode("Status: " + status)); 
+  para.appendChild(document.createElement("br"));
+  eventStream.appendChild(para);
+  eventStream.appendChild(document.createElement("hr"));
+  eventStream.scrollTop = eventStream.scrollHeight;
+  waitQueue--;
 }
 
-getEvent();
+let eventSource = new EventSource("/events/cross");
+
+eventSource.onmessage = function(event) {
+  console.log("New message", event.data);
+  json = JSON.parse(event.data)
+  updateState(currentState, json);
+  dots.push(renderState(currentState));
+
+  waitQueue++;
+  setTimeout(appendEvent, waitQueue*1000, json.dataType, json.identifier, json.method, json.status);
+  setTimeout(render, waitQueue*1000);
+};
+
 </script>
 
 </script>
