@@ -67,10 +67,10 @@ function renderManifests(state) {
   return renderNodes(state, "Manifest");
 }
 
-function renderNodes(state, kind) {
+function renderNodes(state, dataType) {
   let objs = [];
   for (let obj of state.objects) {
-    if (obj.dataType == kind) {
+    if (obj.dataType == dataType) {
       let s = `"${obj.identifier}"`;
       if (obj.color) {
         s += ` [color="${obj.color}", penwidth=2]`;
@@ -91,20 +91,19 @@ function renderEdges(state) {
   for (let edge of state.edges) {
     let src = edge.src;
     let dst = edge.dst;
-
-    if (src.Kind = "Upload") {
+    if (src.dataType == "Blob") {
       src = edge.dst;
       dst = edge.src;
     }
 
-    let s = `"${src.Identifier}" -> "${dst.Identifier}"`;
+    let s = `"${src.identifier}" -> "${dst.identifier}"`;
     if (edge.color) {
-      if (src.Kind = "Upload") {
+      if (src.dataType == "Upload") {
         s += ` [color="${edge.color}", dir=back]`;
       } else {
         s += ` [color="${edge.color}"]`;
       }
-    } else if (src.Kind = "Upload") {
+    } else if (src.dataType == "Upload") {
         s += ` [dir=back]`;
     }
 
@@ -124,14 +123,13 @@ var colors = {
 };
 
 function match(obj, e) {
-  return obj.kind == e.kind && obj.identifier == e.identifier && obj.repo == e.repo;
+  return obj.dataType == e.dataType && obj.identifier == e.identifier && obj.repo == e.repo;
 }
 
 // (state, event) => state
 function updateState(state, e) {
   let nodeFound = false;
 
-  // console.log(e);
   if (!e.objects) {
     e.objects = [];
   }
@@ -160,10 +158,10 @@ function updateState(state, e) {
   outer:
   for (let i = 0; i < state.edges.length; i++) {
     let edge = state.edges[i];
-    for (let j = 0; j < e.Objects.length; j++) {
-      if (match(edge.dst, e.Objects[j])) {
-        edge.color = colors[e.Status] || "black";
-        e.Objects.splice(j, 1);
+    for (let j = 0; j < e.objects.length; j++) {
+      if (match(edge.dst, e.objects[j])) {
+        edge.color = colors[e.status] || "black";
+        e.objects.splice(j, 1);
         continue outer;
       }
     }
@@ -184,7 +182,7 @@ function updateState(state, e) {
       repo: e.repo,
       color: colors[e.status] || "black"
     }
-    if (e.status == 404 || (e.kind == "Upload" && e.method == "PATCH")) {
+    if (e.status == 404 || (e.dataType == "Upload" && e.method == "PATCH")) {
       obj.temporary = true;
     }
     
@@ -207,18 +205,18 @@ function updateState(state, e) {
   for (let target of e.objects) {
     let edge = {
       src: {
-        kind: e.kind,
+        dataType: e.dataType,
         identifier: e.identifier,
         repo: e.repo
       },
       dst: {
-        kind: target.kind,
+        dataType: target.dataType,
         identifier: target.identifier,
         repo: target.repo
       },
       color: colors[e.status] || "black"
     };
-    if (e.kind = "Upload") {
+    if (e.dataType == "Blob") {
       edge.temporary = true;
     }
     state.edges.push(edge);
@@ -247,7 +245,6 @@ function appendEvent(dataType, identifier, method, status) {
 let eventSource = new EventSource("/events/cross");
 
 eventSource.onmessage = function(event) {
-  console.log("New message", event.data);
   json = JSON.parse(event.data)
   updateState(currentState, json);
   dots.push(renderState(currentState));
