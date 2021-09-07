@@ -18,6 +18,7 @@ pub async fn send(
     method: Method,
     status: StatusCode,
     identifier: String,
+    refs: Option<Vec<Ref>>,
     sm: ChannelMap,
 ) {
     let st = sm.lock().await;
@@ -31,6 +32,7 @@ pub async fn send(
                 status: status.as_str().to_string(),
                 repo: ns.to_string(),
                 identifier: identifier,
+                objects: refs,
             })
             .unwrap();
         }
@@ -46,4 +48,13 @@ pub struct Event {
     status: String,
     repo: String,
     identifier: String,
+    objects: Option<Vec<Ref>>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct Ref {
+    pub data_type: String,
+    pub repo: String,
+    pub identifier: String,
 }

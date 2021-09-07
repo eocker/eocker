@@ -1,7 +1,10 @@
 use bytes::{BufMut, Bytes};
+use eocker;
+use eocker::types::MediaType;
 use futures::Stream;
 use futures::StreamExt;
 use sha2::{Digest, Sha256};
+use std::convert::TryFrom;
 use std::io::Write;
 use std::{collections::HashMap, convert::Infallible};
 use tokio::sync::broadcast;
@@ -9,7 +12,7 @@ use tokio_stream::wrappers::BroadcastStream;
 use uuid::Uuid;
 use warp::http::{Method, StatusCode};
 
-use super::channel::{send, ChannelMap, Event};
+use super::channel::{send, ChannelMap, Event, Ref};
 use super::store::{BlobStore, Manifest, ManifestStore, PushQuery, UploadStore};
 
 pub async fn store_chunk(
@@ -69,6 +72,7 @@ pub async fn store_chunk(
                 Method::PATCH,
                 StatusCode::ACCEPTED,
                 id.to_string(),
+                None,
                 cm,
             )
             .await;
@@ -98,6 +102,7 @@ pub async fn store_chunk(
                 Method::PATCH,
                 StatusCode::ACCEPTED,
                 id_string,
+                None,
                 cm,
             )
             .await;
@@ -143,11 +148,12 @@ pub async fn store_blob(
         }
     }
     send(
-        &ns,
+        &ns.clone(),
         "Blob".to_string(),
         Method::PUT,
         StatusCode::CREATED,
         query.digest,
+        Some(vec![Ref { data_type: "Upload".to_string(), repo: ns, identifier: id.to_string()}]),
         cm,
     )
     .await;
@@ -167,6 +173,7 @@ pub async fn get_blob(
         Method::GET,
         StatusCode::OK,
         digest.clone(),
+        None,
         cm,
     )
     .await;
@@ -212,6 +219,7 @@ pub async fn blob_exists(
             Method::HEAD,
             StatusCode::OK,
             digest.clone(),
+            None,
             cm,
         )
         .await;
@@ -223,6 +231,7 @@ pub async fn blob_exists(
         Method::HEAD,
         StatusCode::NOT_FOUND,
         digest.clone(),
+        None,
         cm,
     )
     .await;
@@ -244,17 +253,53 @@ pub async fn store_manifest(
     let mut s = store.lock().await;
     let e = s.entry(ns.clone()).or_insert_with(|| HashMap::new());
     let m = Manifest {
-        content_type: content_type,
-        content: content,
+        content_type: content_type.clone(),
+        content: content.clone(),
     };
     e.insert(reference.clone(), m.clone());
     e.insert(digest.clone(), m);
+    let refs: Vec<Ref> = match MediaType::try_from(content_type.as_str()).unwrap() {
+        MediaType::OCIImageIndex | MediaType::DockerManifestList => {
+            let i: eocker::IndexManifest = serde_json::from_slice(content.as_ref()).unwrap();
+            i.manifests
+                .iter()
+                .map(|l| {
+                    return Ref {
+                        data_type: "Manifest".to_string(),
+                        repo: ns.clone(),
+                        identifier: format!("{}:{}", l.digest.algorithm, l.digest.hex),
+                    };
+                })
+                .collect()
+        }
+        _ => {
+            let m: eocker::Manifest = serde_json::from_slice(content.as_ref()).unwrap();
+            let mut mrefs: Vec<Ref> = m
+                .layers
+                .iter()
+                .map(|l| {
+                    return Ref {
+                        data_type: "Blob".to_string(),
+                        repo: ns.clone(),
+                        identifier: format!("{}:{}", l.digest.algorithm, l.digest.hex),
+                    };
+                })
+                .collect();
+            mrefs.push(Ref {
+                data_type: "Blob".to_string(),
+                repo: ns.clone(),
+                identifier: format!("{}:{}", m.config.digest.algorithm, m.config.digest.hex),
+            });
+            mrefs
+        }
+    };
     send(
         &ns,
         "Manifest".to_string(),
         Method::PUT,
         StatusCode::OK,
         reference,
+        Some(refs),
         cm,
     )
     .await;
@@ -280,6 +325,7 @@ pub async fn get_manifest(
                 Method::GET,
                 StatusCode::NOT_FOUND,
                 reference,
+                None,
                 cm,
             )
             .await;
@@ -295,6 +341,7 @@ pub async fn get_manifest(
                     Method::GET,
                     StatusCode::NOT_FOUND,
                     reference,
+                    None,
                     cm,
                 )
                 .await;
@@ -309,6 +356,7 @@ pub async fn get_manifest(
                     Method::GET,
                     StatusCode::OK,
                     reference,
+                    None,
                     cm,
                 )
                 .await;
@@ -340,6 +388,7 @@ pub async fn manifest_exists(
                 Method::HEAD,
                 StatusCode::NOT_FOUND,
                 reference,
+                None,
                 cm,
             )
             .await;
@@ -353,6 +402,7 @@ pub async fn manifest_exists(
                     Method::HEAD,
                     StatusCode::OK,
                     reference,
+                    None,
                     cm,
                 )
                 .await;
@@ -364,6 +414,7 @@ pub async fn manifest_exists(
                 Method::HEAD,
                 StatusCode::NOT_FOUND,
                 reference,
+                None,
                 cm,
             )
             .await;
