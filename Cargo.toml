@@ -1,5 +1,6 @@
 [workspace]
 members = [
     "eocker",
-    "eocker-registry"
+    "eocker-registry",
+    "remu"
 ]
