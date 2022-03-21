@@ -1,0 +1,8 @@
+[package]
+name = "remu"
+version = "0.1.0"
+authors = ["hasheddan <georgedanielmangum@gmail.com>"]
+description = "A RISC-V simulator that uses an OCI registry for memory."
+repository = "https://github.com/eocker/eocker"
+edition = "2018"
+readme = "README.md"
